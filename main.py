@@ -2,31 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect as sa_inspect, text
 from routers import auth_router, users_router, vendors_router
-from product_management import models as product_models
-from product_management.router import router as products_router
 from database import engine
 import models as main_models
 
-product_models.Base.metadata.create_all(bind=engine)
 main_models.Base.metadata.create_all(bind=engine)
-
-# Migrate products table: normalise to single unit VARCHAR(50)
-with engine.begin() as _conn:
-    try:
-        _inspector = sa_inspect(engine)
-        if "products" in _inspector.get_table_names():
-            _cols = {c["name"] for c in _inspector.get_columns("products")}
-            if "type" in _cols:
-                _conn.execute(text("ALTER TABLE products DROP COLUMN type"))
-            # Revert units JSON → unit VARCHAR(50)
-            if "units" in _cols and "unit" not in _cols:
-                _conn.execute(text("ALTER TABLE products ADD COLUMN unit VARCHAR(50) NOT NULL DEFAULT ''"))
-                _conn.execute(text(
-                    "UPDATE products SET unit = COALESCE(JSON_UNQUOTE(JSON_EXTRACT(units, '$[0]')), '')"
-                ))
-                _conn.execute(text("ALTER TABLE products DROP COLUMN units"))
-    except Exception as _e:
-        print(f"[migration] products: {_e}")
 
 # Migrate vendor_profiles table: add pincode column
 with engine.begin() as _conn:
@@ -213,7 +192,6 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(vendors_router.router)
-app.include_router(products_router)
 
 
 @app.get("/", tags=["Health"])
